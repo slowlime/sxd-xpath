@@ -101,6 +101,7 @@ fn main() {
     opts.optmulti("", "string", "set string variable", "NAME=VALUE");
     opts.optmulti("", "number", "set number variable", "NAME=VALUE");
     opts.optmulti("", "boolean", "set boolean variable", "NAME=VALUE");
+    opts.optopt("", "default-namespace", "set default namespace URI", "URI");
 
     let arguments = match opts.parse(&args[1..]) {
         Ok(x) => x,
@@ -127,6 +128,7 @@ fn main() {
         let mut context = Context::new();
         build_variables(&arguments, &mut context);
         build_namespaces(&arguments, &mut context);
+        context.set_default_namespace_uri(arguments.opt_str("default-namespace"));
 
         let res = xpath.evaluate(&context, doc.root());
 
