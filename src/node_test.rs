@@ -27,13 +27,22 @@ pub struct NameTest {
 }
 
 impl NameTest {
-    fn matches(&self, context: &context::Evaluation<'_, '_>, node_name: QName<'_>) -> bool {
+    fn matches(
+        &self,
+        context: &context::Evaluation<'_, '_>,
+        node_name: QName<'_>,
+        is_element: bool,
+    ) -> bool {
         let is_wildcard = self.local_part == "*";
 
-        let test_uri = self.prefix.as_ref().map(|p| {
-            // TODO: Error for undefined prefix
-            context.namespace_for(p).expect("No namespace for prefix")
-        });
+        let test_uri = self
+            .prefix
+            .as_ref()
+            .map(|p| {
+                // TODO: Error for undefined prefix
+                context.namespace_for(p).expect("No namespace for prefix")
+            })
+            .or(context.default_namespace_uri().filter(|_| is_element));
 
         match (is_wildcard, test_uri) {
             (true, None) => true,
@@ -57,7 +66,7 @@ impl Attribute {
 impl NodeTest for Attribute {
     fn test<'c, 'd>(&self, context: &context::Evaluation<'c, 'd>, result: &mut OrderedNodes<'d>) {
         if let nodeset::Node::Attribute(ref a) = context.node {
-            if self.name_test.matches(context, a.name()) {
+            if self.name_test.matches(context, a.name(), false) {
                 result.add(context.node);
             }
         }
@@ -78,7 +87,10 @@ impl Namespace {
 impl NodeTest for Namespace {
     fn test<'c, 'd>(&self, context: &context::Evaluation<'c, 'd>, result: &mut OrderedNodes<'d>) {
         if let nodeset::Node::Namespace(ref ns) = context.node {
-            if self.name_test.matches(context, QName::new(ns.prefix())) {
+            if self
+                .name_test
+                .matches(context, QName::new(ns.prefix()), false)
+            {
                 result.add(context.node);
             }
         }
@@ -99,7 +111,7 @@ impl Element {
 impl NodeTest for Element {
     fn test<'c, 'd>(&self, context: &context::Evaluation<'c, 'd>, result: &mut OrderedNodes<'d>) {
         if let nodeset::Node::Element(ref e) = context.node {
-            if self.name_test.matches(context, e.name()) {
+            if self.name_test.matches(context, e.name(), true) {
                 result.add(context.node);
             }
         }
@@ -190,6 +202,11 @@ mod test {
 
         fn register_prefix(&mut self, prefix: &str, namespace_uri: &str) {
             self.context.set_namespace(prefix, namespace_uri);
+        }
+
+        fn set_default_namespace_uri(&mut self, namespace_uri: &str) {
+            self.context
+                .set_default_namespace_uri(Some(namespace_uri.into()));
         }
 
         fn context_for_attribute<'n, N>(
@@ -339,6 +356,32 @@ mod test {
         assert_eq!(ordered_nodes![], result);
     }
 
+    #[test]
+    fn attribute_test_does_not_match_on_default_namespace_when_unprefixed() {
+        let package = Package::new();
+        let mut setup = Setup::new(&package);
+        setup.set_default_namespace_uri("namespace");
+        setup.register_prefix("another", "different-uri");
+        let (_, context) = setup.context_for_ns_attribute("prefix", "namespace", "name", "value");
+
+        let result = run_attribute(&context, None, "name");
+        assert_eq!(ordered_nodes![], result);
+
+        let result = run_attribute(&context, Some("another"), "name");
+        assert_eq!(ordered_nodes![], result);
+    }
+
+    #[test]
+    fn attribute_teset_does_not_match_when_attributes_and_default_namespace_differ() {
+        let package = Package::new();
+        let mut setup = Setup::new(&package);
+        setup.set_default_namespace_uri("default");
+        let (_, context) = setup.context_for_ns_attribute("prefix", "namespace", "name", "value");
+
+        let result = run_attribute(&context, None, "name");
+        assert_eq!(ordered_nodes![], result);
+    }
+
     fn run_element<'d>(
         context: &context::Evaluation<'d, 'd>,
         prefix: Option<&str>,
@@ -429,6 +472,32 @@ mod test {
     fn element_test_does_not_match_when_element_has_namespace_but_without_prefix() {
         let package = Package::new();
         let mut setup = Setup::new(&package);
+        let (_, context) = setup.context_for_ns_element("prefix", "uri", "name");
+
+        let result = run_element(&context, None, "name");
+        assert_eq!(ordered_nodes![], result);
+    }
+
+    #[test]
+    fn element_test_matches_on_default_namespace_when_unprefixed() {
+        let package = Package::new();
+        let mut setup = Setup::new(&package);
+        setup.set_default_namespace_uri("uri");
+        setup.register_prefix("another", "different-uri");
+        let (element, context) = setup.context_for_ns_element("prefix", "uri", "name");
+
+        let result = run_element(&context, None, "name");
+        assert_eq!(ordered_nodes![element], result);
+
+        let result = run_element(&context, Some("another"), "name");
+        assert_eq!(ordered_nodes![], result);
+    }
+
+    #[test]
+    fn element_test_does_not_match_when_elements_and_default_namespace_differ() {
+        let package = Package::new();
+        let mut setup = Setup::new(&package);
+        setup.set_default_namespace_uri("default");
         let (_, context) = setup.context_for_ns_element("prefix", "uri", "name");
 
         let result = run_element(&context, None, "name");

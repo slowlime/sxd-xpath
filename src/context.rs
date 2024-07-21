@@ -78,6 +78,7 @@ pub struct Context<'d> {
     functions: Functions,
     variables: Variables<'d>,
     namespaces: Namespaces,
+    default_namespace_uri: Option<String>,
 }
 
 impl<'d> Context<'d> {
@@ -94,6 +95,7 @@ impl<'d> Context<'d> {
             functions: Default::default(),
             variables: Default::default(),
             namespaces: Default::default(),
+            default_namespace_uri: None,
         }
     }
 
@@ -118,6 +120,15 @@ impl<'d> Context<'d> {
     /// Register a namespace prefix within the context
     pub fn set_namespace(&mut self, prefix: &str, uri: &str) {
         self.namespaces.insert(prefix.into(), uri.into());
+    }
+
+    /// Set the default namespace URI for unprefixed XPath name tests.
+    pub fn set_default_namespace_uri(&mut self, namespace_uri: Option<String>) {
+        self.default_namespace_uri = namespace_uri;
+    }
+
+    pub fn default_namespace_uri(&self) -> Option<&str> {
+        self.default_namespace_uri.as_deref()
     }
 }
 
@@ -148,6 +159,7 @@ pub struct Evaluation<'c, 'd> {
     functions: &'c Functions,
     variables: &'c Variables<'d>,
     namespaces: &'c Namespaces,
+    default_namespace_uri: Option<&'c str>,
 }
 
 impl<'c, 'd> Evaluation<'c, 'd> {
@@ -158,6 +170,7 @@ impl<'c, 'd> Evaluation<'c, 'd> {
             functions: &context.functions,
             variables: &context.variables,
             namespaces: &context.namespaces,
+            default_namespace_uri: context.default_namespace_uri.as_deref(),
             position: 1,
             size: 1,
         }
@@ -191,6 +204,11 @@ impl<'c, 'd> Evaluation<'c, 'd> {
     /// Looks up the namespace URI for the given prefix
     pub fn namespace_for(&self, prefix: &str) -> Option<&str> {
         self.namespaces.get(prefix).map(String::as_str)
+    }
+
+    /// Returns the default namespace URI used for unprefixed name tests.
+    pub fn default_namespace_uri(&self) -> Option<&str> {
+        self.default_namespace_uri
     }
 
     /// Yields a new `Evaluation` context for each node in the nodeset.
